@@ -1,0 +1,55 @@
+@page "/login"
+@using SeraBarber.Services
+@inject SupabaseService SupabaseService
+@inject NavigationManager Navigation
+<h3 class="text-xl font-bold mb-4">Login</h3>
+
+@if (!string.IsNullOrEmpty(ErrorMessage))
+{
+    <div class="text-red-600 mb-2">@ErrorMessage</div>
+}
+
+<EditForm Model="this" OnValidSubmit="HandleLogin">
+    <div class="mb-2">
+        <label>Email</label>
+        <InputText @bind-Value="Email" class="form-control" />
+    </div>
+
+    <div class="mb-2">
+        <label>Password</label>
+        <InputText @bind-Value="Password" type="password" class="form-control" />
+    </div>
+
+    <button type="submit" class="btn btn-primary" disabled="@IsLoading">
+        @(IsLoading ? "Logging in..." : "Login")
+    </button>
+</EditForm>
+
+@code {
+    public string Email { get; set; } = string.Empty;
+    public string Password { get; set; } = string.Empty;
+    public string ErrorMessage { get; set; } = string.Empty;
+    public bool IsLoading { get; set; } = false;
+
+    private async Task HandleLogin()
+    {
+        IsLoading = true;
+        ErrorMessage = string.Empty;
+
+        var user = await SupabaseService.LoginAsync(Email, Password);
+
+        if (user != null)
+        {
+            // ✅ Logged in
+            Console.WriteLine($"Logged in as {user.Email}");
+            // You could navigate to homepage
+            Navigation.NavigateTo("/");
+        }
+        else
+        {
+            ErrorMessage = "Invalid email or password.";
+        }
+
+        IsLoading = false;
+    }
+}
