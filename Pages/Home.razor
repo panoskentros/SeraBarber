@@ -1,5 +1,243 @@
-<h3>Home</h3>
+@page "/"
+@using System.Globalization
+@using SeraBarber.Services
+@inject SupabaseService SupabaseService
+@inject NavigationManager NavManager
+@using Blazored.LocalStorage
+@inject ILocalStorageService LocalStorage
+@using Radzen
+@using Radzen.Blazor
+@inject Radzen.DialogService DialogService
+@using SeraBarber.BusinessObjects
+@inject Radzen.NotificationService NotificationService
+
+@if (IsLoading)
+{
+    <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" Style="width:100%;" />
+    <p>Loading...</p>
+}
+else if (CurrentUser != null)
+{
+    <RadzenScheduler @ref=@scheduler
+                     SlotRender=@OnSlotRender
+                     style="height: 768px;"
+                     TItem="Appointment"
+                     Data=@appointments
+                     StartProperty="Start"
+                     EndProperty="End"
+                     ShowHeader=true
+                     TodayText="Σήμερα"
+                     TextProperty="Username"
+                     SelectedIndex="1"
+                     SlotSelect=@OnSlotSelect
+                     AppointmentSelect=@OnAppointmentSelect
+                     AppointmentRender=@OnAppointmentRender
+                     AppointmentMove=@OnAppointmentMove
+                     Culture="CultureInfo.CurrentCulture"
+                     >
+        <RadzenDayView Text="Ημέρα" TimeFormat="HH:mm"/>
+        <RadzenWeekView Text="Εβδομάδα" TimeFormat="HH:mm" />
+    </RadzenScheduler>
+
+    <button class="btn btn-primary mt-5" @onclick="SignOut">Αποσύνδεση</button>
+}
+else
+{
+    <p>Redirecting to login...</p>
+}
+
+<style>
+    .rz-event-content {
+        line-height:0.75rem !important;
+    }
+    .rz-event {
+        height:1.25rem !important;
+    }
+    .rz-scheduler-nav {
+        height: 50px;
+    }
+    .rz-view-header {
+        height:30px;
+    }
+    
+</style>
 
 @code {
-    
+    RadzenScheduler<Appointment> scheduler;
+    private IList<Appointment> appointments;
+
+    private bool IsLoading = true;
+    private Supabase.Gotrue.User? CurrentUser;
+    private string? JwtToken;
+    private int _workStart = 10; // 10:00
+    private int _workEnd = 22;   // 22:00
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        await SupabaseService.InitializeAsync();
+
+        // Restore session
+        var sessionJson = await LocalStorage.GetItemAsStringAsync("supabase_session");
+        if (!string.IsNullOrEmpty(sessionJson))
+        {
+            try
+            {
+                var session = System.Text.Json.JsonSerializer.Deserialize<Supabase.Gotrue.Session>(sessionJson);
+                if (session != null)
+                    await SupabaseService.Client.Auth.SetSession(session.AccessToken, session.RefreshToken);
+            }
+            catch { Console.WriteLine("Failed to restore session."); }
+        }
+
+        // Check current user
+        CurrentUser = SupabaseService.Client.Auth.CurrentUser;
+        if (CurrentUser != null)
+        {
+            var session = SupabaseService.Client.Auth.CurrentSession;
+            JwtToken = session?.AccessToken;
+
+            if (session != null)
+            {
+                var json = System.Text.Json.JsonSerializer.Serialize(session);
+                await LocalStorage.SetItemAsStringAsync("supabase_session", json);
+            }
+
+            // Fetch appointments
+            appointments = await SupabaseService.GetAllAppointmentsAsync();
+        }
+        else
+        {
+            NavManager.NavigateTo("/login", true);
+        }
+
+        IsLoading = false;
+    }
+
+    void OnSlotRender(SchedulerSlotRenderEventArgs args)
+    {
+        if ((SupabaseService.DateTimeHasPassed(args.Start) || 
+            SlotTaken(args.Start,args.End))
+            && SupabaseService.IsWithinWorkHours(args.Start,_workStart,_workEnd))
+        {
+            args.Attributes["style"] = "background: rgba(255,0,0,.25);";
+            return;
+        }
+        // Highlight working hours
+        if ((args.View.Text == "Ημέρα" || args.View.Text == "Εβδομάδα") && args.Start.Hour >= _workStart && args.Start.Hour < _workEnd)
+            args.Attributes["style"] = "background: rgba(0,255,0,.25); !important;";
+    }
+
+    async Task OnSlotSelect(SchedulerSlotSelectEventArgs args)
+    {
+        if (args.View.Text != "Year")
+        {
+            
+            if (SupabaseService.DateTimeHasPassed(args.Start)){
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Error,
+                    Summary = "Παρελθοντική Ημερομηνία",
+                    Detail = "Αυτή η ημερομηνία είναι στο παρελθόν",
+                    Duration = 4000
+                });
+                return;
+            }
+            if (!SupabaseService.IsWithinWorkHours(args.Start,_workStart,_workEnd))
+            {
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Error,
+                    Summary = "Κλειστό",
+                    Detail = "Ο Σέρα ξεκουράζεται αυτή την ώρα",
+                    Duration = 4000
+                });
+                return;
+            }
+            if (SlotTaken(args.Start, args.End))
+            {
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Error,
+                    Summary = "Κατειλημμένο",
+                    Detail = "Αυτό το χρονικό διάστημα έχει ήδη ένα ραντεβού.",
+                    Duration = 4000,
+                    
+                    
+                });
+                return;
+            }
+            var data = await DialogService.OpenAsync<AddAppointmentPage>("Κλείσε ραντεβού",
+                new Dictionary<string, object> { { "Start", args.Start }, { "End", args.End } });
+
+            if (data != null)
+            {
+                appointments.Add(data);
+                await scheduler.Reload();
+            }
+        }
+    }
+
+    async Task OnAppointmentSelect(SchedulerAppointmentSelectEventArgs<Appointment> args)
+    {
+        var copy = new Appointment
+        {
+            Day = args.Data.Day,
+            Time = args.Data.Time,
+            Description = args.Data.Description
+        };
+
+        var data = await DialogService.OpenAsync<EditAppointmentPage>("Επεξεργασία Ραντεβού",
+            new Dictionary<string, object> { { "Appointment", copy } });
+
+        if (data != null)
+        {
+            args.Data.Day = data.Day;
+            args.Data.Time = data.Time;
+            args.Data.Description = data.Description;
+            await scheduler.Reload();
+        }
+    }
+
+    void OnAppointmentRender(SchedulerAppointmentRenderEventArgs<Appointment> args)
+    {
+        if (args.Data.Start < DateTime.Today)
+            args.Attributes["style"] = "background: red";
+    }
+
+    async Task OnAppointmentMove(SchedulerAppointmentMoveEventArgs args)
+    {
+        bool? isAdmin = SupabaseService.IsAdminUser();
+        if (isAdmin is null or false || SupabaseService.DateTimeHasPassed(args.SlotDate) || !SupabaseService.IsWithinWorkHours(args.SlotDate,_workStart,_workEnd)) return;
+        
+        var draggedAppointment = appointments.FirstOrDefault(x => x == args.Appointment.Data);
+        if (draggedAppointment != null)
+        {
+            var duration = draggedAppointment.End - draggedAppointment.Start;
+            draggedAppointment.Day = DateOnly.FromDateTime(args.SlotDate);
+            draggedAppointment.Time = args.SlotDate.TimeOfDay;
+            
+            await SupabaseService.UpdateAppointmentAsync(draggedAppointment);
+            await scheduler.Reload();
+        }
+    }
+
+    private async Task SignOut()
+    {
+        try
+        {
+            await SupabaseService.Client.Auth.SignOut();
+            await LocalStorage.RemoveItemAsync("supabase_session");
+            NavManager.NavigateTo("/login", true);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error signing out: {ex.Message}");
+        }
+    }
+
+    private bool SlotTaken(DateTime start, DateTime end)
+    {
+        return appointments.Any(a => (start < a.End) && (end > a.Start));
+    }
 }

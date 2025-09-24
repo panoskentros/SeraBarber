@@ -1,5 +1,87 @@
-<h3>AddAppointmentPage</h3>
+@using SeraBarber.BusinessObjects
+@using SeraBarber.Services
+@using Radzen
+@using Radzen.Blazor
+@inject Radzen.DialogService DialogService
+@inject SupabaseService SupabaseService
+@using MudBlazor
+@using ButtonType = Radzen.ButtonType
+@using Variant = MudBlazor.Variant
+@inject Radzen.NotificationService NotificationService
+<RadzenTemplateForm TItem="Appointment" Data="@model" Submit=@OnSubmit>
+    <RadzenStack Gap="1rem">
+        <MudStack>
+            <!-- Day picker -->
+            <MudDatePicker Date="@model.Day.ToDateTime(TimeOnly.MinValue)"
+                           DateChanged="@(v => model.Day = DateOnly.FromDateTime(v ?? DateTime.Today))"
+                           PickerVariant="PickerVariant.Inline"
+                           Color="Color.Primary"
+                           Rounded="true"
+                           MinDate="DateTime.Today"
+                           Variant="Variant.Outlined"
+                           Disabled="true"/>
+
+
+            <!-- Time picker -->
+            <MudTimePicker Time="model.Time"
+                           TimeChanged="@(v => model.Time = v ?? TimeSpan.Zero)"
+                           PickerVariant="PickerVariant.Inline"
+                           Color="Color.Primary"
+                           Rounded="true"
+                           Variant="Variant.Outlined"
+                           Disabled="true"/>
+
+            <MudTextField @bind-Value="model.Description" Label="Σημειώσεις" Clearable="true" Disabled="HasPassed"/>
+        </MudStack>
+        <MudStack>
+            <RadzenButton ButtonType="ButtonType.Submit" Text="Save" Disabled="HasPassed"/>
+        </MudStack>
+    </RadzenStack>
+</RadzenTemplateForm>
 
 @code {
-    
+    bool HasPassed = false;
+
+    [Parameter]
+    public DateTime Start { get; set; }  // for initial value
+    [Parameter]
+    public DateTime End { get; set; }    // for initial value
+
+    Appointment model = new Appointment();
+
+    protected override void OnParametersSet()
+    {
+        // Initialize Day and Time from Start
+        model.Day = DateOnly.FromDateTime(Start);
+        model.Time = Start.TimeOfDay;
+        HasPassed = SupabaseService.DateTimeHasPassed(Start);
+    }
+
+    async void OnSubmit(Appointment model)
+    {
+        // Compute full start DateTime
+        DateTime appointmentStart = model.Day.ToDateTime(TimeOnly.FromTimeSpan(model.Time));
+
+
+
+        // Check if the appointment is in the past
+        if (SupabaseService.DateTimeHasPassed(appointmentStart)||
+            model.Time.Hours != Start.TimeOfDay.Hours ||
+            model.Time.Minutes != Start.TimeOfDay.Minutes ||
+            model.Time.Seconds != Start.TimeOfDay.Seconds)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Warning,
+                Summary = "Παρελθοντική Ημερομηνία",
+                Detail = "Αυτή η ημερομηνία είναι στο παρελθόν",
+                Duration = 4000
+            });
+            return; 
+        }
+
+        
+        await SupabaseService.AddAppointmentAsync(model);
+        DialogService.Close(model);
+    }
 }

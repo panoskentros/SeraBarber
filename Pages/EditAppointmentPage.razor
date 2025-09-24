@@ -1,5 +1,117 @@
-<h3>EditAppointmentPage</h3>
+@using SeraBarber.BusinessObjects
+@using SeraBarber.Services
+@using Radzen
+@using Radzen.Blazor
+@inject Radzen.DialogService DialogService
+@using MudBlazor
+@using ButtonType = Radzen.ButtonType
+@using Variant = MudBlazor.Variant
+@inject  SupabaseService SupabaseService
+@inject  Radzen.NotificationService NotificationService
+<RadzenTemplateForm TItem="Appointment" Data="@model" Submit=@OnSubmit>
+    <RadzenStack Gap="1rem">
+        <MudStack>
+            <!-- Day picker -->
+            <MudDatePicker Date="@model.Day.ToDateTime(TimeOnly.MinValue)"
+                           DateChanged="@(v => model.Day = DateOnly.FromDateTime(v ?? DateTime.Today))"
+                           PickerVariant="PickerVariant.Inline"
+                           Color="Color.Primary"
+                           Rounded="true"
+                           MinDate="DateTime.Today"
+                           Variant="Variant.Outlined"
+                           Disabled="HasPassed"/>
+
+
+            <!-- Time picker -->
+            <MudTimePicker Time="model.Time"
+                           TimeChanged="@(v => model.Time = v ?? TimeSpan.Zero)"
+                           PickerVariant="PickerVariant.Inline"
+                           Color="Color.Primary"
+                           Rounded="true"
+                           Variant="Variant.Outlined"
+                           Disabled="HasPassed"
+                           MinuteSelectionStep="30"/>
+
+            <MudTextField @bind-Value="model.Description"
+                          Label="Σημειώσεις"
+                          Clearable="true"
+                          Disabled="HasPassed"/>
+        </MudStack>
+        <MudStack>
+            <RadzenButton ButtonType="ButtonType.Submit" Text="Αποθήκευση" Disabled="HasPassed"/>
+            <RadzenButton Click="OnDeleteClicked" Text="Διαγραφή"  Disabled="HasPassed"/>
+        </MudStack>
+    </RadzenStack>
+</RadzenTemplateForm>
 
 @code {
-    
+    bool HasPassed = false;
+
+    [Parameter]
+    public Appointment Appointment { get; set; }
+
+    Appointment model = new Appointment();
+
+    protected override void OnParametersSet()
+    {
+        if (Appointment != null)
+        {
+            HasPassed = Appointment.Start < DateTime.Today;
+
+            model.Id = Appointment.Id;
+            model.UserId = Appointment.UserId;
+            model.Username = Appointment.Username;
+            model.Email = Appointment.Email;
+            model.PhoneNumber = Appointment.PhoneNumber;
+            model.Day = Appointment.Day;
+            model.Time = Appointment.Time;
+            model.Description = Appointment.Description;
+            model.CreatedAt = Appointment.CreatedAt;
+        }
+        else
+        {
+            DialogService.Close();
+        }
+    }
+
+    protected override Task OnInitializedAsync()
+    {
+        SupabaseService.InitializeAsync();
+        return base.OnInitializedAsync();
+    }
+
+    async Task OnSubmit(Appointment model)
+    {
+        // Make sure UpdateAppointmentAsync handles Day + Time
+        await SupabaseService.UpdateAppointmentAsync(model);
+
+        DialogService.Close(model);
+        StateHasChanged();
+    }
+
+    private async Task OnDeleteClicked()
+    {
+        bool? confirmed = await DialogService.Confirm("Θέλετε να διαγράψετε το ραντεβού;", "Επιβεβαίωση");
+        if (confirmed != true) return;
+
+        bool success = await SupabaseService.DeleteAppointmentAsync(model.Id);
+
+        if (success)
+        {
+            DialogService.Close(model);
+            StateHasChanged();
+        }
+        else
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Σφάλμα",
+                Detail = "Σφάλμα κατά τη διαγραφή του ραντεβού",
+                Duration = 4000
+            });
+        }
+    }
+
+
 }
