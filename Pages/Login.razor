@@ -7,6 +7,7 @@
 @inject NavigationManager NavManager
 @inject ILocalStorageService LocalStorage
 @inject NotificationService NotificationService
+@inject IJSRuntime JsRuntime
 @if (IsLoading)
 {
     <h1>Loading...</h1>
@@ -40,8 +41,11 @@ else
                         Δεν έχετε λογαριασμό; Εγγραφείτε εδώ
                     </a>
                 </div>
+                <div id="googleSignInButton" data-type="standard" style="display: flex; justify-content: center; margin-top: 20px;"></div>
+
             </div>
         </div>
+       
     </div>
 }
 <style>
@@ -96,7 +100,8 @@ else
     protected override async Task OnInitializedAsync()
     {
         await SupabaseService.InitializeAsync();
-
+       
+        
         // Try restore session from local storage
         var sessionJson = await LocalStorage.GetItemAsStringAsync("supabase_session");
 
@@ -148,6 +153,62 @@ else
             });
         }
     }
+    private DotNetObjectReference<Login>? objRef;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Create a reference to this component for JS interop
+            objRef = DotNetObjectReference.Create(this);
+            await JsRuntime.InvokeVoidAsync("initializeGoogleSignIn", objRef);
+        }
+    }
+
+    private async Task SignInWithGoogle()
+    {
+        // This just triggers the Google Sign-In popup via JS
+        await JsRuntime.InvokeVoidAsync("triggerGoogleSignIn");
+    }
+
+    [JSInvokable]
+    public async Task HandleGoogleLogin(string idToken)
+    {
+        try
+        {
+            var session = await SupabaseService.Client.Auth.SignInWithIdToken(
+                Supabase.Gotrue.Constants.Provider.Google,
+                idToken
+            );
+
+            if (session != null)
+            {
+                await LocalStorage.SetItemAsStringAsync(
+                    "supabase_session",
+                    System.Text.Json.JsonSerializer.Serialize(session)
+                );
+                NavManager.NavigateTo("/", true);
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Σφάλμα Google Login",
+                Detail = ex.Message,
+                Duration = 4000
+            });
+        }
+    }
+
+    public void Dispose()
+    {
+        objRef?.Dispose();
+    }
+
+
+
 
     private class LoginModel
     {
