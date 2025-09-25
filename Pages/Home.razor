@@ -10,7 +10,7 @@
 @inject Radzen.DialogService DialogService
 @using SeraBarber.BusinessObjects
 @inject Radzen.NotificationService NotificationService
-
+<p>@CurrentUser?.Email</p>
 @if (IsLoading)
 {
     <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" Style="width:100%;" />
@@ -18,6 +18,7 @@
 }
 else if (CurrentUser != null)
 {
+    <div class="scheduler-container">
     <RadzenScheduler @ref=@scheduler
                      SlotRender=@OnSlotRender
                      style="height: 768px;"
@@ -38,7 +39,7 @@ else if (CurrentUser != null)
         <RadzenDayView Text="Ημέρα" TimeFormat="HH:mm"/>
         <RadzenWeekView Text="Εβδομάδα" TimeFormat="HH:mm" />
     </RadzenScheduler>
-
+    </div>
     <button class="btn btn-primary mt-5" @onclick="SignOut">Αποσύνδεση</button>
 }
 else
@@ -59,7 +60,24 @@ else
     .rz-view-header {
         height:30px;
     }
+    .scheduler-container {
+        width: 100%; 
+        padding: 0 5px;
+        .scheduler-container {
+            width: 90%; /* narrower on mobile */
+            padding: 0 5px;
+        }
+    }
+    @@media (max-width: 768px) {
+        .scheduler-container {
+            width: 90%; /* narrower on mobile */
+            padding: 0 5px;
+        }
     
+        .rz-scheduler {
+            font-size: 0.85rem; /* slightly smaller text */
+        }
+    }
 </style>
 
 @code {
@@ -180,12 +198,28 @@ else
 
     async Task OnAppointmentSelect(SchedulerAppointmentSelectEventArgs<Appointment> args)
     {
-        var copy = new Appointment
+        Appointment copy;
+        if (SupabaseService.IsAdminUser()==true)
         {
+             copy = new Appointment
+            {
             Day = args.Data.Day,
-            Time = args.Data.Time,
-            Description = args.Data.Description
-        };
+                Time = args.Data.Time,
+                Description = args.Data.Description,
+                Username = args.Data.Username,
+                PhoneNumber = args.Data.PhoneNumber,
+                Email = args.Data.Email
+                };
+        }
+        else
+        {
+            copy = new Appointment
+            {
+                Day = args.Data.Day,
+                Time = args.Data.Time,
+            };
+        }
+        
 
         var data = await DialogService.OpenAsync<EditAppointmentPage>("Επεξεργασία Ραντεβού",
             new Dictionary<string, object> { { "Appointment", copy } });
@@ -207,9 +241,28 @@ else
 
     async Task OnAppointmentMove(SchedulerAppointmentMoveEventArgs args)
     {
-        bool? isAdmin = SupabaseService.IsAdminUser();
-        if (isAdmin is null or false || SupabaseService.DateTimeHasPassed(args.SlotDate) || !SupabaseService.IsWithinWorkHours(args.SlotDate,_workStart,_workEnd)) return;
-        
+        bool noAdmin =  SupabaseService.IsAdminUser() is null or false;
+        bool datePassed = SupabaseService.DateTimeHasPassed(args.SlotDate);
+        bool outsideWorkHours = !SupabaseService.IsWithinWorkHours(args.SlotDate, _workStart, _workEnd);
+        bool hasConflict = appointments.Any(x => x.Start == args.SlotDate && x != args.Appointment.Data);
+
+// If any condition fails
+        if (noAdmin || datePassed || outsideWorkHours)
+        {
+            string message = noAdmin ? "Δεν έχετε τα απαιτούμενα δικαιώματα." :
+                datePassed ? "Η ημερομηνία έχει ήδη περάσει." :
+                "Η ώρα είναι εκτός ωραρίου εργασίας.";
+
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                
+                Detail = message,
+                Duration = 4000
+            });
+
+            return;
+        }
         var draggedAppointment = appointments.FirstOrDefault(x => x == args.Appointment.Data);
         if (draggedAppointment != null)
         {
@@ -220,6 +273,8 @@ else
             await SupabaseService.UpdateAppointmentAsync(draggedAppointment);
             await scheduler.Reload();
         }
+
+        
     }
 
     private async Task SignOut()

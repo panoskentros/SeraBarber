@@ -27,7 +27,7 @@ builder.Services.AddScoped<DialogService>();
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<TooltipService>();
 builder.Services.AddScoped<ContextMenuService>();
-
+builder.Services.AddRadzenComponents();
 // Register SupabaseService
 builder.Services.AddScoped<SupabaseService>();
 

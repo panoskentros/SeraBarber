@@ -1,0 +1,169 @@
+@page "/Register"
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.IdentityModel.Tokens
+@using Radzen
+@using SeraBarber.BusinessObjects
+@using SeraBarber.Services
+@inject SupabaseService SupabaseService
+@inject Radzen.NotificationService NotificationService
+<div class="register-container">
+    <div class="@("register-box " + (IsButtonDisabled ? "border-danger" : (_registered ? "border-success" : "")))">
+            <img src="logo.jpeg" alt="Logo" class="logo"/>
+            @if (!_registered)
+            {
+                <div class="register-form">
+                    <h3 class="text-center mb-4">Εγγραφή</h3>
+                    <EditForm Model="@model" OnValidSubmit="OnSubmit">
+                        <DataAnnotationsValidator/>
+
+
+                        <div class="form-group">
+                            <label for="username" class="mb-2">Όνομα Χρήστη</label>
+                            <input @bind="model.Username" id="username" type="text" class="form-control" placeholder="Εισάγετε όνομα χρήστη"/>
+                            <ValidationMessage For="@(() => model.Username)"/>
+                        </div>
+                        <div class="form-group">
+                            <label for="email" class="mb-2">Διεύθυνση Email</label>
+                            <input @bind="model.Email" id="email" type="email" class="form-control" placeholder="Εισάγετε email"/>
+                            <ValidationMessage For="@(() => model.Email)"/>
+                        </div>
+                        <div class="form-group">
+                            <label for="phone" class="mb-2">Αριθμός Τηλεφώνου</label>
+                            <input @bind="model.PhoneNumber" id="phone" type="tel" class="form-control" placeholder="Εισάγετε αριθμό τηλεφώνου"/>
+                            <ValidationMessage For="@(() => model.PhoneNumber)"/>
+                        </div>
+                        <div class="form-group">
+                            <label for="password" class="mb-2">Κωδικός Πρόσβασης</label>
+                            <input @bind="model.Password" id="password" type="password" class="form-control" placeholder="Εισάγετε κωδικό πρόσβασης"/>
+                            <ValidationMessage For="@(() => model.Password)"/>
+                        </div>
+                        <div class="form-group text-center">
+                            <button type="submit"
+                                    class="@ButtonClass"
+                                    disabled="@IsButtonDisabled"
+                                    autofocus>
+                                @ButtonText
+                            </button>
+                        </div>
+
+                    </EditForm>
+                </div>
+            }
+            else
+            {
+                <p>Έχει σταλεί μύνημα επιβεβαίωσης στη διεύθυνση email σας. Παρακαλώ ελέγξτε τα εισερχόμενά σας.</p>
+            }
+        </div>
+    </div>
+
+<style>
+    /* Register container */
+    .register-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        width: 100%;
+        height: 90vh;
+        background-color: transparent;
+    }
+
+    /* Register box */
+    .register-box {
+        max-width: 400px;
+        width: 100%;
+        padding: 20px;
+        border: 2px solid lightgray;
+        border-radius: 8px;
+        background-color: white;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    }
+    .border-danger {
+        border-color: red !important;
+    }
+    .border-sucess {
+        border-color: green !important;
+    }
+    .register-form {
+        padding: 30px 0;
+    }
+
+    .form-group {
+        margin-top: 20px;
+    }
+
+    .btn-block {
+        width: 100%;
+    }
+    .logo {
+        display: block;
+        margin: 0 auto;       /* centers horizontally */
+        width: 90% ;         /* adjust as needed */
+        height: 20vh;         /* maintain aspect ratio */
+        max-height: 200px;
+    }
+</style>
+
+@code {
+    RegisterModel model = new RegisterModel();
+    private bool _registered = false;
+    private string ButtonText = "Εγγραφή";
+    private string ButtonClass = "btn btn-success btn-block";
+    private bool IsButtonDisabled = false;
+    private async Task OnSubmit()
+    {
+        var result = await SupabaseService.UserExistsAsync(model.Username, model.Email, model.PhoneNumber);
+
+        if (result.exists)
+        {
+            ButtonText = "Ο χρήστης υπάρχει ήδη";
+            ButtonClass = "btn btn-danger text-white btn-block";
+            IsButtonDisabled = true;
+            await Task.Delay(3000);
+
+            ButtonText = "Εγγραφή";
+            ButtonClass = "btn btn-success btn-block";
+            IsButtonDisabled = false;
+            
+            return;
+        }
+      
+
+        var (user, errorMessage) = await SupabaseService.RegisterAsync(
+            model.Email, model.Password, model.Username, model.PhoneNumber
+        );
+
+        if (user == null)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Σφάλμα",
+                Detail = string.IsNullOrWhiteSpace(errorMessage) ? "Προέκυψε απρόοπτο σφάλμα" : errorMessage,
+                Duration = 4000
+            });
+        }
+        else
+        {
+            _registered = true;
+        }
+    }
+
+    private class RegisterModel
+    {
+        [Required(ErrorMessage = "Υποχρεωτικό πεδίο")]
+        public string Username { get; set; }
+
+        [Required(ErrorMessage = "Υποχρεωτικό πεδίο")]
+        [EmailAddress(ErrorMessage = "Μη έγκυρο email")]
+        public string Email { get; set; }
+
+        [Required(ErrorMessage = "Υποχρεωτικό πεδίο")]
+        [Phone(ErrorMessage = "Μη έγκυρος αριθμός τηλεφώνου")]
+        public string PhoneNumber { get; set; }
+
+        [Required(ErrorMessage = "Υποχρεωτικό πεδίο")]
+        [RegularExpression(@"^(?=.*[A-Z])(?=.*[!@#$%^&*(),.?""':{}|<>]).{6,}$", 
+            ErrorMessage = "Ο κωδικός πρέπει να είναι >6 χαρακτήρων, να περιέχει τουλάχιστον ένα κεφαλαίο γράμμα και ένα ειδικό χαρακτήρα")]
+        public string Password { get; set; }
+    }
+}

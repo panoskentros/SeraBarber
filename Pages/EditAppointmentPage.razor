@@ -1,3 +1,4 @@
+@using System.Reactive.Concurrency
 @using SeraBarber.BusinessObjects
 @using SeraBarber.Services
 @using Radzen
@@ -11,6 +12,13 @@
 <RadzenTemplateForm TItem="Appointment" Data="@model" Submit=@OnSubmit>
     <RadzenStack Gap="1rem">
         <MudStack>
+            @if (_isAdmin)
+            {
+                <MudTextField T="string" Label="Όνομα Χρήστη" Value="@model.Username" ReadOnly="true"/>
+                <MudTextField T="string" Label="Email" Value="@model.Email" ReadOnly="true"/>
+                <MudTextField T="string" Label="Αριθμός τηλεφώνου" Value="@model.PhoneNumber" ReadOnly="true"/>
+            }
+
             <!-- Day picker -->
             <MudDatePicker Date="@model.Day.ToDateTime(TimeOnly.MinValue)"
                            DateChanged="@(v => model.Day = DateOnly.FromDateTime(v ?? DateTime.Today))"
@@ -19,7 +27,8 @@
                            Rounded="true"
                            MinDate="DateTime.Today"
                            Variant="Variant.Outlined"
-                           Disabled="HasPassed"/>
+                           ReadOnly="false"
+            />
 
 
             <!-- Time picker -->
@@ -29,18 +38,23 @@
                            Color="Color.Primary"
                            Rounded="true"
                            Variant="Variant.Outlined"
-                           Disabled="HasPassed"
+                           ReadOnly="false"
                            MinuteSelectionStep="30"/>
-
-            <MudTextField @bind-Value="model.Description"
-                          Label="Σημειώσεις"
-                          Clearable="true"
-                          Disabled="HasPassed"/>
+            @if (_isAdmin)
+            {
+                <MudTextField @bind-Value="model.Description"
+                              Label="Σημειώσεις"
+                              Clearable="true"
+                              ReadOnly="false"/>
+            }
         </MudStack>
-        <MudStack>
-            <RadzenButton ButtonType="ButtonType.Submit" Text="Αποθήκευση" Disabled="HasPassed"/>
-            <RadzenButton Click="OnDeleteClicked" Text="Διαγραφή"  Disabled="HasPassed"/>
-        </MudStack>
+        @if (true)
+        {
+            <MudStack>
+                <RadzenButton ButtonType="ButtonType.Submit" Text="Αποθήκευση"/>
+                <RadzenButton Click="OnDeleteClicked" Text="Διαγραφή" />
+            </MudStack>
+        }
     </RadzenStack>
 </RadzenTemplateForm>
 
@@ -48,15 +62,16 @@
     bool HasPassed = false;
 
     [Parameter]
-    public Appointment Appointment { get; set; }
+    public Appointment? Appointment { get; set; }
 
     Appointment model = new Appointment();
-
+    private bool _isAdmin;
+    private bool _isMyAppointment;
     protected override void OnParametersSet()
     {
         if (Appointment != null)
         {
-            HasPassed = Appointment.Start < DateTime.Today;
+            HasPassed = SupabaseService.DateTimeHasPassed(Appointment.Start);
 
             model.Id = Appointment.Id;
             model.UserId = Appointment.UserId;
@@ -66,18 +81,21 @@
             model.Day = Appointment.Day;
             model.Time = Appointment.Time;
             model.Description = Appointment.Description;
-            model.CreatedAt = Appointment.CreatedAt;
+            model.CreatedAt = Appointment.CreatedAt; 
+            var currentUser = SupabaseService.GetCurrentUser();
+            _isMyAppointment = currentUser?.Email != null && currentUser.Email == model.Email;
         }
         else
         {
             DialogService.Close();
-        }
+        }    
     }
 
-    protected override Task OnInitializedAsync()
+    protected override async Task OnInitializedAsync()
     {
-        SupabaseService.InitializeAsync();
-        return base.OnInitializedAsync();
+        await SupabaseService.InitializeAsync();
+        _isAdmin = SupabaseService.IsAdminUser() ?? false;
+        await base.OnInitializedAsync();
     }
 
     async Task OnSubmit(Appointment model)
@@ -94,7 +112,7 @@
         bool? confirmed = await DialogService.Confirm("Θέλετε να διαγράψετε το ραντεβού;", "Επιβεβαίωση");
         if (confirmed != true) return;
 
-        bool success = await SupabaseService.DeleteAppointmentAsync(model.Id);
+        var (success,errorMsg) = await SupabaseService.DeleteAppointmentAsync(model.Id);
 
         if (success)
         {
@@ -107,7 +125,7 @@
             {
                 Severity = NotificationSeverity.Error,
                 Summary = "Σφάλμα",
-                Detail = "Σφάλμα κατά τη διαγραφή του ραντεβού",
+                Detail = errorMsg ?? "Σφάλμα κατά τη διαγραφή του ραντεβού",
                 Duration = 4000
             });
         }

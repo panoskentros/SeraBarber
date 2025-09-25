@@ -49,12 +49,19 @@
 
     Appointment model = new Appointment();
 
+    
+
     protected override void OnParametersSet()
     {
         // Initialize Day and Time from Start
         model.Day = DateOnly.FromDateTime(Start);
         model.Time = Start.TimeOfDay;
         HasPassed = SupabaseService.DateTimeHasPassed(Start);
+    }
+
+    protected override Task OnInitializedAsync()
+    {
+        return base.OnInitializedAsync();
     }
 
     async void OnSubmit(Appointment model)
@@ -80,8 +87,13 @@
             return; 
         }
 
-        
+        var currentUser = SupabaseService.GetCurrentUser();
+        model.Username = currentUser?.UserMetadata["username"]?.ToString() ?? "Unknown";
+        model.Email = currentUser.Email;
+        model.PhoneNumber = currentUser.UserMetadata["phone_number"]?.ToString() ?? "unknown";
+        model.UserId = Guid.Parse(currentUser.Id);
         await SupabaseService.AddAppointmentAsync(model);
         DialogService.Close(model);
+        StateHasChanged();
     }
 }

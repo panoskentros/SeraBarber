@@ -1,9 +1,12 @@
 @page "/login"
+@using System.ComponentModel.DataAnnotations
 @using Blazored.LocalStorage
+@using Radzen
 @using SeraBarber.Services
 @inject SupabaseService SupabaseService
 @inject NavigationManager NavManager
 @inject ILocalStorageService LocalStorage
+@inject NotificationService NotificationService
 @if (IsLoading)
 {
     <h1>Loading...</h1>
@@ -12,23 +15,31 @@ else
 {
     <div class="login-container">
         <div class="login-box">
-            <img src="logo.jpeg" alt="Logo" style="width:375px; height:200px; display:block; margin:0 auto;"/>
+            <img src="logo.jpeg" class="logo" alt="Logo"/>
             <div class="login-form">
                 <h3 class="text-center mb-4">Σύνδεση</h3>
 
-                <EditForm Model="this" OnValidSubmit="ProcessLogin">
+                <EditForm Model="@model" OnValidSubmit="ProcessLogin">
+                    <DataAnnotationsValidator/>
                     <div class="form-group">
                         <label for="email" class="mb-2">Διεύθυνση Email</label>
-                        <input @bind="Email" id="email" type="email" class="form-control" placeholder="Εισάγετε email εδώ"/>
+                        <input @bind="model.Email" id="email" type="email" class="form-control" placeholder="Εισάγετε email εδώ"/>
+                        <ValidationMessage For="@(() => model.Email)"/>
                     </div>
                     <div class="form-group">
                         <label for="password" class="mb-2">Κωδικός Πρόσβασης</label>
-                        <input @bind="Password" id="password" type="password" class="form-control" placeholder="Εισάγετε κωδικό πρόσβασης εδώ"/>
+                        <input @bind="model.Password" id="password" type="password" class="form-control" placeholder="Εισάγετε κωδικό πρόσβασης εδώ"/>
+                        <ValidationMessage For="@(() => model.Password)"/>
                     </div>
                     <div class="form-group text-center">
                         <button type="submit" class="btn btn-primary btn-block">Σύνδεση</button>
                     </div>
                 </EditForm>
+                <div class="form-group text-center mt-5">
+                    <a href="/Register" style="color: #0066CC; text-decoration: underline; cursor: pointer;">
+                        Δεν έχετε λογαριασμό; Εγγραφείτε εδώ
+                    </a>
+                </div>
             </div>
         </div>
     </div>
@@ -56,11 +67,12 @@ else
         box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
     }
 
-    .login-logo {
-        width: 100px;
-        height: 100px;
-        margin: auto;
+    .logo {
         display: block;
+        margin: 0 auto;       /* centers horizontally */
+        width: 90% ;         /* adjust as needed */
+        height: 20vh;         /* maintain aspect ratio */
+        max-height: 200px;
     }
 
     .login-form {
@@ -77,58 +89,71 @@ else
 </style>
 
 @code {
-private string Email { get; set; } = string.Empty;
-private string Password { get; set; } = string.Empty;
-private Supabase.Gotrue.User? CurrentUser;
+    private Supabase.Gotrue.User? CurrentUser;
+    private LoginModel model { get; set; } = new LoginModel();
 
-bool  IsLoading = true;
-protected override async Task OnInitializedAsync()
-{
-    await SupabaseService.InitializeAsync();
-
-    // Try restore session from local storage
-    var sessionJson = await LocalStorage.GetItemAsStringAsync("supabase_session");
-
-    if (!string.IsNullOrEmpty(sessionJson))
+    bool  IsLoading = true;
+    protected override async Task OnInitializedAsync()
     {
-        try
-        {
-            var session = System.Text.Json.JsonSerializer.Deserialize<Supabase.Gotrue.Session>(sessionJson);
+        await SupabaseService.InitializeAsync();
 
-            if (session != null)
+        // Try restore session from local storage
+        var sessionJson = await LocalStorage.GetItemAsStringAsync("supabase_session");
+
+        if (!string.IsNullOrEmpty(sessionJson))
+        {
+            try
             {
-                await SupabaseService.Client.Auth.SetSession(session.AccessToken, session.RefreshToken);
+                var session = System.Text.Json.JsonSerializer.Deserialize<Supabase.Gotrue.Session>(sessionJson);
+
+                if (session != null)
+                {
+                    await SupabaseService.Client.Auth.SetSession(session.AccessToken, session.RefreshToken);
+                }
+            }
+            catch
+            {
+                Console.WriteLine("Failed to restore session.");
             }
         }
-        catch
+
+        // Check current user
+        CurrentUser = SupabaseService.Client.Auth.CurrentUser;
+
+        if (CurrentUser != null)
         {
-            Console.WriteLine("Failed to restore session.");
+            // Already logged in → redirect to home
+            NavManager.NavigateTo("/", true);
+        }
+
+        // Otherwise stay on login page
+        IsLoading = false;
+    }
+
+    private async Task ProcessLogin()
+    {
+        var (user,errorMessage) = await SupabaseService.LoginAsync(model.Email, model.Password);
+        if (user != null)
+        {
+            NavManager.NavigateTo("/");
+        }
+        else
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Σφάλμα",
+                Detail = errorMessage,
+                Duration = 4000
+            });
         }
     }
 
-    // Check current user
-    CurrentUser = SupabaseService.Client.Auth.CurrentUser;
-
-    if (CurrentUser != null)
+    private class LoginModel
     {
-        // Already logged in → redirect to home
-        NavManager.NavigateTo("/", true);
-    }
-
-    // Otherwise stay on login page
-    IsLoading = false;
-}
-
-private async Task ProcessLogin()
-{
-    var user = await SupabaseService.LoginAsync(Email, Password);
-    if (user != null)
-    {
-        NavManager.NavigateTo("/");
-    }
-    else
-    {
-        Console.WriteLine("Login failed");
-    }
+        [Required(ErrorMessage = "Υποχρεωτικό πεδίο")]
+        public string Email { get; set; }
+        [Required(ErrorMessage = "Υποχρεωτικό πεδίο")]
+        public string Password { get; set; }
     }
 }
