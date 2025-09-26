@@ -59,9 +59,10 @@
         HasPassed = SupabaseService.DateTimeHasPassed(Start);
     }
 
-    protected override Task OnInitializedAsync()
+    protected override async Task OnInitializedAsync()
     {
-        return base.OnInitializedAsync();
+        await SupabaseService.InitializeAsync();
+        await base.OnInitializedAsync();
     }
 
     async void OnSubmit(Appointment model)
@@ -88,7 +89,7 @@
         }
 
         var currentUser = SupabaseService.GetCurrentUser();
-        if (currentUser == null) return;
+        if (currentUser == null) throw new Exception("current user is null");
         
         
         model.Username = currentUser?.UserMetadata["name"]?.ToString() ?? "Unknown";

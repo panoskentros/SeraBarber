@@ -95,32 +95,10 @@ else
     {
         await SupabaseService.InitializeAsync();
 
-        // Restore session
-        var sessionJson = await LocalStorage.GetItemAsStringAsync("supabase_session");
-        if (!string.IsNullOrEmpty(sessionJson))
-        {
-            try
-            {
-                var session = System.Text.Json.JsonSerializer.Deserialize<Supabase.Gotrue.Session>(sessionJson);
-                if (session != null)
-                    await SupabaseService.Client.Auth.SetSession(session.AccessToken, session.RefreshToken);
-            }
-            catch { Console.WriteLine("Failed to restore session."); }
-        }
-
         // Check current user
         CurrentUser = SupabaseService.Client.Auth.CurrentUser;
         if (CurrentUser != null)
         {
-            var session = SupabaseService.Client.Auth.CurrentSession;
-            JwtToken = session?.AccessToken;
-
-            if (session != null)
-            {
-                var json = System.Text.Json.JsonSerializer.Serialize(session);
-                await LocalStorage.SetItemAsStringAsync("supabase_session", json);
-            }
-
             // Fetch appointments
             appointments = await SupabaseService.GetAllAppointmentsAsync();
         }
@@ -180,8 +158,6 @@ else
                     Summary = "Κατειλημμένο",
                     Detail = "Αυτό το χρονικό διάστημα έχει ήδη ένα ραντεβού.",
                     Duration = 4000,
-                    
-                    
                 });
                 return;
             }
@@ -199,17 +175,18 @@ else
     async Task OnAppointmentSelect(SchedulerAppointmentSelectEventArgs<Appointment> args)
     {
         Appointment copy;
-        if (SupabaseService.IsAdminUser()==true)
+        var isMyAppointment = SupabaseService.IsMyAppointment(args.Data.UserId);
+        if (SupabaseService.IsAdminUser()==true || isMyAppointment )
         {
              copy = new Appointment
             {
-            Day = args.Data.Day,
+                Day = args.Data.Day,
                 Time = args.Data.Time,
                 Description = args.Data.Description,
                 Username = args.Data.Username,
+                Email = args.Data.Email,
                 PhoneNumber = args.Data.PhoneNumber,
-                Email = args.Data.Email
-                };
+            };
         }
         else
         {
@@ -217,6 +194,7 @@ else
             {
                 Day = args.Data.Day,
                 Time = args.Data.Time,
+                Username = args.Data.Username,
             };
         }
         

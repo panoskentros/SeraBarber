@@ -1,4 +1,6 @@
+using Blazored.LocalStorage;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.JSInterop;
 using Radzen;
 using Supabase;
 using Supabase.Gotrue;
@@ -22,17 +24,19 @@ namespace SeraBarber.Services
             = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlubGNrcXdhd21waHlvd3dsbGlyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1ODU1OTg5OSwiZXhwIjoyMDc0MTM1ODk5fQ.dkDRUek1vPUdoBgu5DunjtFgGiOYkhc_YpsHGU88TWY";
 
         private readonly DialogService _dialogService;
+        private readonly IJSRuntime _jsRuntime;
 
-        public SupabaseService(DialogService dialogService)
+        public SupabaseService(DialogService dialogService, IJSRuntime jsRuntime,ILocalStorageService localStorage)
         {
             _dialogService = dialogService;
-            client = new Supabase.Client(
-                "https://inlckqwawmphyowwllir.supabase.co", supabaseKey: ClientKey
-            );
-            adminClient = new Supabase.Client("https://inlckqwawmphyowwllir.supabase.co",supabaseKey:adminClientKey
-                );
+            _jsRuntime = jsRuntime;
+            LocalStorage = localStorage;
+            client = new Supabase.Client("https://inlckqwawmphyowwllir.supabase.co", supabaseKey: ClientKey);
+            adminClient = new Supabase.Client("https://inlckqwawmphyowwllir.supabase.co", supabaseKey: adminClientKey);
         }
-     
+
+        private ILocalStorageService LocalStorage { get; set; }
+
         public User? GetCurrentUser() => client.Auth.CurrentUser;
         public bool? IsAdminUser()
         {
@@ -50,6 +54,33 @@ namespace SeraBarber.Services
         {
             await client.InitializeAsync();
             await adminClient.InitializeAsync();
+            await RestoreSessionAsync();
+        }
+
+        private async Task RestoreSessionAsync()
+        {
+            var sessionJson = await LocalStorage.GetItemAsStringAsync("supabase_session");
+
+            if (!string.IsNullOrEmpty(sessionJson))
+            {
+                try
+                {
+                    await SaveSessionAsync(sessionJson);
+                }
+                catch
+                {
+                    Console.WriteLine("Failed to restore session.");
+                }
+            }
+        }
+        private async Task SaveSessionAsync(string? sessionJson)
+        {
+            var session = System.Text.Json.JsonSerializer.Deserialize<Supabase.Gotrue.Session>(sessionJson);
+
+            if (session != null)
+            {
+                await this.Client.Auth.SetSession(session.AccessToken, session.RefreshToken);
+            }
         }
         /// <summary>
         /// Register a new user with email, password, and optional username.
@@ -252,7 +283,7 @@ namespace SeraBarber.Services
             }
             else
             {
-                var response = await adminClient.From<Appointment>().Select("day,time,name").Get();
+                var response = await adminClient.From<Appointment>().Select("*").Get();
                 return response.Models;
             }
         }
@@ -407,6 +438,17 @@ namespace SeraBarber.Services
                 );
                         
             }
+        }
+
+        public bool IsMyAppointment(Guid appointmentUserId)
+        {
+            var currentUser = client.Auth.CurrentUser;
+            if (currentUser == null || string.IsNullOrEmpty(currentUser.Id))
+                return false;
+
+            if (!Guid.TryParse(currentUser.Id, out var currentUserId))
+                return false;
+            return currentUserId == appointmentUserId;
         }
     }
 }

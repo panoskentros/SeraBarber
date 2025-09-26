@@ -11,59 +11,72 @@
 @inject  Radzen.NotificationService NotificationService
 <RadzenTemplateForm TItem="Appointment" Data="@model" Submit=@OnSubmit>
     <RadzenStack Gap="1rem">
-        <MudStack>
-            <MudTextField T="string" Label="Όνομα Χρήστη" Value="@model.Username" ReadOnly="true"/>
-            <MudTextField T="string" Label="Email" Value="@model.Email" ReadOnly="true"/>
-            <MudTextField T="string" Label="Αριθμός τηλεφώνου" Value="@model.PhoneNumber" ReadOnly="true"/>
-
-            <!-- Day picker -->
-            <MudDatePicker Date="@model.Day.ToDateTime(TimeOnly.MinValue)"
-                           DateChanged="@(v => model.Day = DateOnly.FromDateTime(v ?? DateTime.Today))"
-                           PickerVariant="PickerVariant.Inline"
-                           Color="Color.Primary"
-                           Rounded="true"
-                           MinDate="DateTime.Today"
-                           Variant="Variant.Outlined"
-                           ReadOnly="false"
-            />
-
-
-            <!-- Time picker -->
-            <MudTimePicker Time="model.Time"
-                           TimeChanged="@(v => model.Time = v ?? TimeSpan.Zero)"
-                           PickerVariant="PickerVariant.Inline"
-                           Color="Color.Primary"
-                           Rounded="true"
-                           Variant="Variant.Outlined"
-                           ReadOnly="false"
-                           MinuteSelectionStep="30"/>
-            @if (_isAdmin)
-            {
-                <MudTextField @bind-Value="model.Description"
-                              Label="Σημειώσεις"
-                              Clearable="true"
-                              ReadOnly="false"/>
-            }
-        </MudStack>
-        @if (true)
+        @if (!_initialized)
+        {
+            <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:200px;">
+                <MudProgressCircular Indeterminate="true" Size="Size.Medium" Color="Color.Primary" />
+                <p>Φόρτωση...</p>
+            </div>
+        }
+        else
         {
             <MudStack>
-                <RadzenButton ButtonType="ButtonType.Submit" Text="Αποθήκευση"/>
-                <RadzenButton Click="OnDeleteClicked" Text="Διαγραφή" />
+                <MudTextField T="string" Label="Όνομα Χρήστη" Value="@model.Username" ReadOnly="true"/>
+                <MudTextField T="string" Label="Email" Value="@model.Email" ReadOnly="true"/>
+                <MudTextField T="string" Label="Αριθμός τηλεφώνου" Value="@model.PhoneNumber" ReadOnly="true"/>
+
+                <!-- Day picker -->
+                <MudDatePicker Date="@model.Day.ToDateTime(TimeOnly.MinValue)"
+                               DateChanged="@(v => model.Day = DateOnly.FromDateTime(v ?? DateTime.Today))"
+                               PickerVariant="PickerVariant.Inline"
+                               Color="Color.Primary"
+                               Rounded="true"
+                               MinDate="DateTime.Today"
+                               Variant="Variant.Outlined"
+                               Label="Ημερομηνία"
+                               ReadOnly="!_isMyAppointment  && !_isAdmin"/>
+
+
+                <!-- Time picker -->
+                <MudTimePicker Time="model.Time"
+                               TimeChanged="@(v => model.Time = v ?? TimeSpan.Zero)"
+                               PickerVariant="PickerVariant.Inline"
+                               Color="Color.Primary"
+                               Rounded="true"
+                               Variant="Variant.Outlined"
+                               ReadOnly="!_isMyAppointment && !_isAdmin"
+                               Label="Ώρα"
+                               MinuteSelectionStep="30"/>
+                @if (_isAdmin || _isMyAppointment)
+                {
+                    <MudTextField @bind-Value="model.Description"
+                                  Label="Σημειώσεις"
+                                  Clearable="true"
+                                  ReadOnly="!_isMyAppointment"/>
+                }
             </MudStack>
+            @if (true)
+            {
+                <MudStack>
+                    <RadzenButton ButtonType="ButtonType.Submit" Text="Αποθήκευση" ButtonStyle="ButtonStyle.Success"/>
+                    <RadzenButton Click="OnDeleteClicked" Text="Διαγραφή" ButtonStyle="ButtonStyle.Danger"/>
+                </MudStack>
+            }
         }
     </RadzenStack>
 </RadzenTemplateForm>
+
 
 @code {
     bool HasPassed = false;
 
     [Parameter]
     public Appointment? Appointment { get; set; }
-
+    [Parameter]
+    public bool _isMyAppointment { get; set; }
     Appointment model = new Appointment();
     private bool _isAdmin;
-    private bool _isMyAppointment;
+    private bool _initialized = false;
     protected override void OnParametersSet()
     {
         if (Appointment != null)
@@ -78,14 +91,13 @@
             model.Day = Appointment.Day;
             model.Time = Appointment.Time;
             model.Description = Appointment.Description;
-            model.CreatedAt = Appointment.CreatedAt; 
-            var currentUser = SupabaseService.GetCurrentUser();
-            _isMyAppointment = currentUser?.Email != null && currentUser.Email == model.Email;
+            model.CreatedAt = Appointment.CreatedAt;
+            _initialized = true;
         }
         else
         {
             DialogService.Close();
-        }    
+        }   
     }
 
     protected override async Task OnInitializedAsync()
@@ -97,7 +109,6 @@
 
     async Task OnSubmit(Appointment model)
     {
-        // Make sure UpdateAppointmentAsync handles Day + Time
         await SupabaseService.UpdateAppointmentAsync(model);
 
         DialogService.Close(model);
@@ -106,7 +117,11 @@
 
     private async Task OnDeleteClicked()
     {
-        bool? confirmed = await DialogService.Confirm("Θέλετε να διαγράψετε το ραντεβού;", "Επιβεβαίωση");
+        var confirmOptions = new ConfirmOptions()
+        {
+            CancelButtonText = "Ακύρωση",
+        };
+        bool? confirmed = await DialogService.Confirm("Θέλετε να διαγράψετε το ραντεβού;", "Επιβεβαίωση",confirmOptions);
         if (confirmed != true) return;
 
         var (success,errorMsg) = await SupabaseService.DeleteAppointmentAsync(model.Id);

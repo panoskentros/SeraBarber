@@ -132,26 +132,7 @@ else
         await SupabaseService.InitializeAsync();
        
         
-        // Try restore session from local storage
-        var sessionJson = await LocalStorage.GetItemAsStringAsync("supabase_session");
-
-        if (!string.IsNullOrEmpty(sessionJson))
-        {
-            try
-            {
-                var session = System.Text.Json.JsonSerializer.Deserialize<Supabase.Gotrue.Session>(sessionJson);
-
-                if (session != null)
-                {
-                    await SupabaseService.Client.Auth.SetSession(session.AccessToken, session.RefreshToken);
-                }
-            }
-            catch
-            {
-                Console.WriteLine("Failed to restore session.");
-            }
-        }
-
+     
         // Check current user
         CurrentUser = SupabaseService.Client.Auth.CurrentUser;
 
@@ -221,8 +202,7 @@ else
                     
                     
                    
-                    if (!user.UserMetadata.ContainsKey("role") || 
-                        !(user.UserMetadata["role"]?.ToString().Equals("user") ?? false))
+                    if (!user.UserMetadata.ContainsKey("role"))
                     {
                         await SupabaseService.Client.Auth.Update(new UserAttributes()
                         {
