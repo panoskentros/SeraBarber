@@ -1,8 +1,11 @@
+using Microsoft.IdentityModel.Tokens;
+using Radzen;
 using Supabase;
 using Supabase.Gotrue;
 using Supabase.Postgrest;
 using Supabase.Postgrest.Models;
 using SeraBarber.BusinessObjects;
+using SeraBarber.Pages;
 using Supabase.Postgrest.Responses;
 using Client = Supabase.Client;
 using Constants = Supabase.Gotrue.Constants;
@@ -17,14 +20,19 @@ namespace SeraBarber.Services
             = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlubGNrcXdhd21waHlvd3dsbGlyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg1NTk4OTksImV4cCI6MjA3NDEzNTg5OX0.OxFodXckQwJkdeupxugRw3sWttRIJLjqSZ_rBS4xS7g";
         private readonly string adminClientKey 
             = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlubGNrcXdhd21waHlvd3dsbGlyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1ODU1OTg5OSwiZXhwIjoyMDc0MTM1ODk5fQ.dkDRUek1vPUdoBgu5DunjtFgGiOYkhc_YpsHGU88TWY";
-        public SupabaseService()
+
+        private readonly DialogService _dialogService;
+
+        public SupabaseService(DialogService dialogService)
         {
+            _dialogService = dialogService;
             client = new Supabase.Client(
                 "https://inlckqwawmphyowwllir.supabase.co", supabaseKey: ClientKey
             );
             adminClient = new Supabase.Client("https://inlckqwawmphyowwllir.supabase.co",supabaseKey:adminClientKey
                 );
         }
+     
         public User? GetCurrentUser() => client.Auth.CurrentUser;
         public bool? IsAdminUser()
         {
@@ -49,26 +57,29 @@ namespace SeraBarber.Services
         /// </summary>
 
         public async Task<(User? user, string? errorMessage)> RegisterAsync(
-            string email, string password, string username, string phoneNumber)
+            string email, string password, string name, string phoneNumber)
         {
             if (string.IsNullOrWhiteSpace(email))
                 return (null, "Email is required");
             if (string.IsNullOrWhiteSpace(password))
                 return (null, "Password is required");
-            if (string.IsNullOrWhiteSpace(username))
+            if (string.IsNullOrWhiteSpace(name))
                 return (null, "Username is required");
             if (string.IsNullOrWhiteSpace(phoneNumber))
                 return (null, "Phone number is required");
-
+            var result = await this.UserExistsAsync(name, email, phoneNumber);
+            if (result.exists)
+            {
+                return (null,"Ο χρήστης υπάρχει ήδη");
+            }
             try
             {
                 var options = new SignUpOptions
                 {
                     Data = new Dictionary<string, object>
                     {
-                        { "username", username },
+                        { "name", name },
                         { "phone_number", phoneNumber },
-                        { "display_name", username },
                         { "email_address", email },
                         { "role", "user" }
                     }
@@ -97,7 +108,7 @@ namespace SeraBarber.Services
         }
 
 
-        public async Task<(bool exists, string? field)> UserExistsAsync(string username, string email, string phoneNumber)
+        public async Task<(bool exists, string? field)> UserExistsAsync(string name, string email, string phoneNumber)
         {
             try
             {
@@ -105,20 +116,20 @@ namespace SeraBarber.Services
 
                 var existing = users.Users.FirstOrDefault(u =>
                     u.Email.Equals(email) ||
-                    (u.UserMetadata.ContainsKey("username") && u.UserMetadata["username"].Equals(username)) ||
+                    (u.UserMetadata.ContainsKey("name") && u.UserMetadata["name"].Equals(name)) ||
                     (u.UserMetadata.ContainsKey("phone_number") && u.UserMetadata["phone_number"].Equals(phoneNumber))
                 );
 
                 if (existing != null)
                 {
-                    if (existing.UserMetadata.ContainsKey("username") && existing.UserMetadata["username"].Equals(username))
-                        return (true, "username");
+                    if (existing.UserMetadata.ContainsKey("name") && existing.UserMetadata["name"].Equals(name))
+                        return (true, "name");
                     if (existing.Email.Equals(email))
                         return (true, "email");
                     if (existing.UserMetadata.ContainsKey("phone_number") && existing.UserMetadata["phone_number"].Equals(phoneNumber))
                         return (true, "phone number");
                 }
-
+                
                 return (false, null);
             }
             catch (Exception ex)
@@ -127,8 +138,7 @@ namespace SeraBarber.Services
                 return (false, null);
             }
         }
-
-
+        
 
         // public async Task<bool> CheckAndVerifyPhoneAsync(User user)
         // {
@@ -185,9 +195,10 @@ namespace SeraBarber.Services
 
                 if (response?.User != null)
                 {
+                    //await this.CheckForPhoneAsync(); // may be needed
+                    
                     return (response.User, null); // success
                 }
-
                 return (null, "Λανθασμένος κωδικός ή διεύθυνση email");
             }
             catch (Supabase.Gotrue.Exceptions.GotrueException ex)
@@ -241,7 +252,7 @@ namespace SeraBarber.Services
             }
             else
             {
-                var response = await adminClient.From<Appointment>().Select("day,time,username").Get();
+                var response = await adminClient.From<Appointment>().Select("day,time,name").Get();
                 return response.Models;
             }
         }
@@ -379,5 +390,23 @@ namespace SeraBarber.Services
             return slotStart.Hour >= workStart && slotStart.Hour <= workEnd - 1;
         }
 
+        public async Task CheckForPhoneAsync()
+        {
+            var user = Client.Auth.CurrentUser;
+            if (!user.UserMetadata.ContainsKey("phone_number")||user.UserMetadata["phone_number"].ToString().IsNullOrEmpty())
+            {
+                await _dialogService.OpenAsync<EnterPhoneDialog>(
+                    "Προσθέστε τον αριθμό σας",
+                    new Dictionary<string, object> { { "UserId", user.Id } },
+                    new DialogOptions
+                    {
+                        ShowClose = false,     // no close button
+                        CloseDialogOnEsc = false, // can't escape
+                        CloseDialogOnOverlayClick = false,          
+                    }
+                );
+                        
+            }
+        }
     }
 }

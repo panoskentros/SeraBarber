@@ -11,7 +11,7 @@ window.initializeGoogleSignIn = function(dotnetHelper) {
     function waitForButton() {
         const buttonContainer = document.getElementById("googleSignInButton");
         if (buttonContainer) {
-            google.accounts.id.renderButton(buttonContainer, { theme: "outline", size: "large" });
+            google.accounts.id.renderButton(buttonContainer, { theme: "outline", size: "large",locale:"el-GR" });
         } else {
             // Retry after 50ms
             setTimeout(waitForButton, 50);

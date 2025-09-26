@@ -37,9 +37,9 @@ namespace SeraBarber.BusinessObjects
 
 
         [Supabase.Postgrest.Attributes.Column("description")]
-        public string Description { get; set; }
+        public string Description { get; set; } = string.Empty;
 
-        [Supabase.Postgrest.Attributes.Column("username")]
+        [Supabase.Postgrest.Attributes.Column("name")]
         public string Username { get; set; }
 
         [Supabase.Postgrest.Attributes.Column("email")]

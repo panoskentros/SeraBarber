@@ -1,0 +1,40 @@
+@using System.ComponentModel.DataAnnotations
+@using Radzen
+@using SeraBarber.Services
+@using Radzen.Blazor
+@inject SupabaseService SupabaseService
+@inject Radzen.DialogService DialogService
+
+<EditForm Model="@model" OnValidSubmit="SavePhone">
+    <DataAnnotationsValidator />
+    <RadzenTextBox @bind-Value="model.PhoneNumber" Placeholder="Αριθμός Τηλεφώνου" Style="width:100%" />
+    <ValidationMessage For="@(() => model.PhoneNumber)" />
+    <RadzenButton ButtonType="ButtonType.Submit" Text="Αποθήκευση" Style="margin-top:10px" />
+</EditForm>
+
+@code {
+    [Parameter] public string UserId { get; set; }
+
+    private PhoneModel model = new PhoneModel();
+
+    private async Task SavePhone()
+    {
+        // Update Supabase user metadata
+        await SupabaseService.Client.Auth.Update(new Supabase.Gotrue.UserAttributes
+        {
+            Data = new Dictionary<string, object>
+            {
+                { "phone_number", model.PhoneNumber }
+            }
+        });
+
+        DialogService.Close(model.PhoneNumber);
+    }
+
+    private class PhoneModel
+    {
+        [Required(ErrorMessage = "Απαραίτητο")]
+        [Phone(ErrorMessage = "Μη έγκυρος αριθμός")]
+        public string PhoneNumber { get; set; }
+    }
+}

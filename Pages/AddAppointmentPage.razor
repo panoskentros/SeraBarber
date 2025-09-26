@@ -88,7 +88,10 @@
         }
 
         var currentUser = SupabaseService.GetCurrentUser();
-        model.Username = currentUser?.UserMetadata["username"]?.ToString() ?? "Unknown";
+        if (currentUser == null) return;
+        
+        
+        model.Username = currentUser?.UserMetadata["name"]?.ToString() ?? "Unknown";
         model.Email = currentUser.Email;
         model.PhoneNumber = currentUser.UserMetadata["phone_number"]?.ToString() ?? "unknown";
         model.UserId = Guid.Parse(currentUser.Id);

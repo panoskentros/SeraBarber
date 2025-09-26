@@ -1,13 +1,17 @@
 @page "/login"
 @using System.ComponentModel.DataAnnotations
 @using Blazored.LocalStorage
+@using Microsoft.IdentityModel.Tokens
 @using Radzen
+@using SeraBarber.BusinessObjects
 @using SeraBarber.Services
+@using Supabase.Gotrue
 @inject SupabaseService SupabaseService
 @inject NavigationManager NavManager
 @inject ILocalStorageService LocalStorage
 @inject NotificationService NotificationService
 @inject IJSRuntime JsRuntime
+@inject DialogService DialogService
 @if (IsLoading)
 {
     <h1>Loading...</h1>
@@ -17,8 +21,12 @@ else
     <div class="login-container">
         <div class="login-box">
             <img src="logo.jpeg" class="logo" alt="Logo"/>
+            <div id="googleSignInButton" data-type="standard" style="display: flex; justify-content: center; margin-top: 20px;"></div>
+            <div class="divider">
+                <span>ή</span>
+            </div>
             <div class="login-form">
-                <h3 class="text-center mb-4">Σύνδεση</h3>
+                <h3 class="text-center mb-4">Σύνδεση με email</h3>
 
                 <EditForm Model="@model" OnValidSubmit="ProcessLogin">
                     <DataAnnotationsValidator/>
@@ -41,7 +49,6 @@ else
                         Δεν έχετε λογαριασμό; Εγγραφείτε εδώ
                     </a>
                 </div>
-                <div id="googleSignInButton" data-type="standard" style="display: flex; justify-content: center; margin-top: 20px;"></div>
 
             </div>
         </div>
@@ -80,7 +87,7 @@ else
     }
 
     .login-form {
-        padding: 30px 0;
+        padding: 0.5rem;
     }
 
     .form-group {
@@ -89,6 +96,29 @@ else
 
     .btn-block {
         width: 100%;
+    }
+    .divider {
+        display: flex;
+        align-items: center;
+        text-align: center;
+        margin: 30px 0;
+        color: #888;
+        font-weight: bold;
+    }
+
+    .divider::before,
+    .divider::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: #ccc;
+        margin: 0 10px;
+    }
+
+    .divider span {
+        padding: 0 10px;
+        color: #555;
+        font-weight: 500;
     }
 </style>
 
@@ -183,6 +213,26 @@ else
 
             if (session != null)
             {
+                var user = SupabaseService.Client.Auth.CurrentUser;
+
+                if (user != null)
+                {
+                    await SupabaseService.CheckForPhoneAsync();
+                    
+                    
+                   
+                    if (!user.UserMetadata.ContainsKey("role") || 
+                        !(user.UserMetadata["role"]?.ToString().Equals("user") ?? false))
+                    {
+                        await SupabaseService.Client.Auth.Update(new UserAttributes()
+                        {
+                            Data = new Dictionary<string, object>()
+                            {
+                                { "role", "user" }
+                            }
+                        });
+                    }
+                }
                 await LocalStorage.SetItemAsStringAsync(
                     "supabase_session",
                     System.Text.Json.JsonSerializer.Serialize(session)

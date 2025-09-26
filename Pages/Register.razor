@@ -111,23 +111,6 @@
     private bool IsButtonDisabled = false;
     private async Task OnSubmit()
     {
-        var result = await SupabaseService.UserExistsAsync(model.Username, model.Email, model.PhoneNumber);
-
-        if (result.exists)
-        {
-            ButtonText = "Ο χρήστης υπάρχει ήδη";
-            ButtonClass = "btn btn-danger text-white btn-block";
-            IsButtonDisabled = true;
-            await Task.Delay(3000);
-
-            ButtonText = "Εγγραφή";
-            ButtonClass = "btn btn-success btn-block";
-            IsButtonDisabled = false;
-            
-            return;
-        }
-      
-
         var (user, errorMessage) = await SupabaseService.RegisterAsync(
             model.Email, model.Password, model.Username, model.PhoneNumber
         );
@@ -137,10 +120,17 @@
             NotificationService.Notify(new NotificationMessage
             {
                 Severity = NotificationSeverity.Error,
-                Summary = "Σφάλμα",
                 Detail = string.IsNullOrWhiteSpace(errorMessage) ? "Προέκυψε απρόοπτο σφάλμα" : errorMessage,
-                Duration = 4000
+                Duration = 3000
             });
+            ButtonText = "Σφάλμα";
+            ButtonClass = "btn btn-danger text-white btn-block";
+            IsButtonDisabled = true;
+            await Task.Delay(3000);
+
+            ButtonText = "Εγγραφή";
+            ButtonClass = "btn btn-success btn-block";
+            IsButtonDisabled = false;
         }
         else
         {

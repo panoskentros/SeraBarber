@@ -12,12 +12,9 @@
 <RadzenTemplateForm TItem="Appointment" Data="@model" Submit=@OnSubmit>
     <RadzenStack Gap="1rem">
         <MudStack>
-            @if (_isAdmin)
-            {
-                <MudTextField T="string" Label="Όνομα Χρήστη" Value="@model.Username" ReadOnly="true"/>
-                <MudTextField T="string" Label="Email" Value="@model.Email" ReadOnly="true"/>
-                <MudTextField T="string" Label="Αριθμός τηλεφώνου" Value="@model.PhoneNumber" ReadOnly="true"/>
-            }
+            <MudTextField T="string" Label="Όνομα Χρήστη" Value="@model.Username" ReadOnly="true"/>
+            <MudTextField T="string" Label="Email" Value="@model.Email" ReadOnly="true"/>
+            <MudTextField T="string" Label="Αριθμός τηλεφώνου" Value="@model.PhoneNumber" ReadOnly="true"/>
 
             <!-- Day picker -->
             <MudDatePicker Date="@model.Day.ToDateTime(TimeOnly.MinValue)"
