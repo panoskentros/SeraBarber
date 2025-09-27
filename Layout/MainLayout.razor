@@ -1,10 +1,107 @@
 ﻿@inherits LayoutComponentBase
 @using SeraBarber.Services
+@using MudBlazor
 @inject SupabaseService SupabaseService
-<div class="page">
+
+<MudDrawer @bind-Open="_open" Variant="DrawerVariant.Temporary" Elevation="4" ClipMode="DrawerClipMode.Never" Class="mud-theme-background">
+    <MudDrawerHeader Style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:1rem;">
+        <!-- Circular avatar -->
+        <img src="@_avatarUrl" alt="avatar" style="width:100px; height:100px; border-radius:50%;" />
+
+        <!-- Text below -->
+        <MudText Typo="Typo.h6" Class="text-center mt-2">@_name</MudText>
+    </MudDrawerHeader>
+
+
+
+
+    <MudNavMenu Class="d-flex flex-column" Style="height:100%;">
+        <div>
+            <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home" Class="py-3">Aρχική σελίδα</MudNavLink>
+            <MudNavLink Href="/BookAppointment" Icon="@Icons.Material.Filled.Event" Class="py-3">Kλείσε ραντεβού</MudNavLink>
+            <MudNavLink Href="/Profile" Icon="@Icons.Material.Filled.Person" Class="py-3">Tα στοιχεία μου</MudNavLink>
+        </div>
+
+        <!-- Logout at the bottom -->
+        <MudNavLink @onclick="async () => await SupabaseService.SignOut()"
+                    Icon="@Icons.Material.Filled.Logout"
+                    Class="py-3 mud-text-red mt-auto">
+            Aποσύνδεση
+        </MudNavLink>
+    </MudNavMenu>
+
+</MudDrawer>
+
+<!-- Toggle button with animation -->
+<button class="toggle-button" @onclick="ToggleDrawer">
+    <MudIcon Icon="@Icons.Material.Filled.Menu" class="menu-icon" />
+</button>
+<style>
+    /* Button styling */
+    .toggle-button {
+        position: fixed;
+        top: 1rem;
+        left: 1rem;
+        z-index: 50;
+        background-color: #1976d2; /* Primary color */
+        color: white;
+        border: none;
+        border-radius: 50%;
+        width: 56px;
+        height: 56px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: background-color 0.3s;
+    }
+
+    .toggle-button:hover {
+        background-color: #1565c0; /* Slightly darker on hover */
+    }
+
+    /* Rotate the icon */
+    .menu-icon {
+        transition: transform 0.3s;
+    }
+
+    .toggle-button.open .menu-icon {
+        transform: rotate(90deg);
+    }
+
+</style>
+<!-- Main content -->
+<div class="page ml-0 md:ml-64 transition-all duration-300">
     <main>
-        <article class="content px-4">
+        <article class="content px-4 py-6">
             @Body
         </article>
     </main>
 </div>
+
+@code {
+    private bool _open = false;
+    string _name;  private string _avatarUrl;
+    private void ToggleDrawer()
+    {
+        _open = !_open;
+        var user = SupabaseService.Client.Auth.CurrentUser;
+        _name  = user?.UserMetadata["name"].ToString() ?? String.Empty;
+        _avatarUrl = user?.UserMetadata["avatar_url"]?.ToString() ?? "default_avatar.jpg";
+
+        // Fallback to default if avatar_url is null or empty
+        if (string.IsNullOrWhiteSpace(_avatarUrl))
+        {
+            _avatarUrl = "default_avatar.jpg";
+        }
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {   
+        base.OnAfterRender(firstRender);
+    }
+
+    
+  
+
+}

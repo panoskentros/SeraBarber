@@ -126,9 +126,7 @@
     protected override async Task OnInitializedAsync()
     {
         await SupabaseService.InitializeAsync();
-       
         
-     
         // Check current user
         CurrentUser = SupabaseService.Client.Auth.CurrentUser;
 

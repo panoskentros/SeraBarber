@@ -1,4 +1,5 @@
 using Blazored.LocalStorage;
+using Microsoft.AspNetCore.Components;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.JSInterop;
 using Radzen;
@@ -25,14 +26,19 @@ namespace SeraBarber.Services
 
         private readonly DialogService _dialogService;
         private readonly IJSRuntime _jsRuntime;
+        private readonly NavigationManager _navigationManager;
 
-        public SupabaseService(DialogService dialogService, IJSRuntime jsRuntime,ILocalStorageService localStorage)
+        public SupabaseService(DialogService dialogService, 
+            IJSRuntime jsRuntime,
+            ILocalStorageService localStorage,
+            NavigationManager navigationManager)
         {
             _dialogService = dialogService;
             _jsRuntime = jsRuntime;
             LocalStorage = localStorage;
             client = new Supabase.Client("https://inlckqwawmphyowwllir.supabase.co", supabaseKey: ClientKey);
             adminClient = new Supabase.Client("https://inlckqwawmphyowwllir.supabase.co", supabaseKey: adminClientKey);
+            _navigationManager =  navigationManager;
         }
 
         private ILocalStorageService LocalStorage { get; set; }
@@ -263,7 +269,7 @@ namespace SeraBarber.Services
 
             var response = await client
                             .From<Appointment>()
-                            .Filter("user_id", Supabase.Postgrest.Constants.Operator.Equals, currentUser.Id) // <- Operator.Equals instead of "eq"
+                            .Filter("user_id", Supabase.Postgrest.Constants.Operator.Equals, currentUser.Id) 
                             .Select("*")
                             .Get();
             
@@ -467,6 +473,19 @@ namespace SeraBarber.Services
             if (!Guid.TryParse(currentUser.Id, out var currentUserId))
                 return false;
             return currentUserId == appointmentUserId;
+        }
+        public async Task SignOut()
+        {
+            try
+            {
+                await this.Client.Auth.SignOut();
+                await LocalStorage.RemoveItemAsync("supabase_session");
+                _navigationManager.NavigateTo("/login", true);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error signing out: {ex.Message}");
+            }
         }
     }
 }
