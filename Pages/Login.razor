@@ -12,11 +12,7 @@
 @inject NotificationService NotificationService
 @inject IJSRuntime JsRuntime
 @inject DialogService DialogService
-@if (IsLoading)
-{
-    <h1>Loading...</h1>
-}
-else
+@if (!IsLoading)
 {
     <div class="login-container">
         <div class="login-box">
