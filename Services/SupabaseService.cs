@@ -313,18 +313,33 @@ namespace SeraBarber.Services
         /// Update an existing appointment.
         /// Only the owner or admin can update.
         /// </summary>
-        public async Task<Appointment?> UpdateAppointmentAsync(Appointment appointment)
+        public async Task<(Appointment?,string)> UpdateAppointmentAsync(Appointment appointment)
         {
             var currentUser = client.Auth.CurrentUser;
             if (currentUser == null)
-                return null;
+                return (null,"Δεν βρέθηκε ο τρέχων χρήστης");
+            
+
+            var dayAsDateTime = appointment.Day.ToDateTime(TimeOnly.MinValue);
+            var timeString = appointment.Time.ToString(@"hh\:mm\:ss"); // "14:30:00"
+            var slotTaken = await adminClient
+                .From<Appointment>()
+                .Filter("day", Supabase.Postgrest.Constants.Operator.Equals, dayAsDateTime)
+                .Filter("time", Supabase.Postgrest.Constants.Operator.Equals, timeString)
+                .Filter("id", Supabase.Postgrest.Constants.Operator.NotEqual, appointment.Id.ToString())
+                .Get();
+            if (slotTaken.Models.Any())
+            {
+                return (null, "Αυτό το χρονικό διάστημα έχει ήδη ένα ραντεβού.");
+            }
+            
             if (currentUser.UserMetadata["role"].Equals("admin"))
             {
                 var response = await adminClient
                     .From<Appointment>()
                     .Where(a => a.Id == appointment.Id)
                     .Update(appointment);
-                return response.Models.FirstOrDefault();
+                return (response.Models.FirstOrDefault(),string.Empty);
             }
             else
             {
@@ -332,7 +347,7 @@ namespace SeraBarber.Services
                     .From<Appointment>()
                     .Where(a => a.Id == appointment.Id)
                     .Update(appointment);
-                return response.Models.FirstOrDefault();
+                return (response.Models.FirstOrDefault(),string.Empty);
             }
 
         }
@@ -369,27 +384,30 @@ namespace SeraBarber.Services
         /// </summary>
         public async Task<(bool,string?)> DeleteAppointmentAsync(Guid appointmentId)
         {
-            // var currentUser = client.Auth.CurrentUser;
-            // if (currentUser == null)
-            //     return (false,"user not found");
+            var currentUser = client.Auth.CurrentUser;
+            if (currentUser == null)
+                return (false, "user not found");
+            var existing = await this.FindAppointmentAsync(appointmentId);
+            if (existing==null)
+                return (false, "Appointment not found.");
             try
             {
-                // if (currentUser.UserMetadata["role"].Equals("admin"))
-                // {
-                await adminClient
-                    .From<Appointment>()
-                    .Where(a => a.Id == appointmentId)
-                    .Delete();
-                return (true,null);
-                // }
-                // else
-                // {
-                    // await client
-                    //     .From<Appointment>()
-                    //     .Where(a => a.Id == appointmentId)
-                    //     .Delete();
-                    // return (true,null);
-                //}
+                if (currentUser.UserMetadata["role"].Equals("admin"))
+                {
+                    await adminClient
+                        .From<Appointment>()
+                        .Where(a => a.Id == appointmentId)
+                        .Delete();
+                    return (true,null);
+                 }
+                 else
+                 {
+                     await client
+                         .From<Appointment>()
+                         .Where(a => a.Id == appointmentId)
+                         .Delete();
+                     return (true,null);
+                }
             }
             catch (Supabase.Gotrue.Exceptions.GotrueException ex)
             {

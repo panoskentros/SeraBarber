@@ -1,3 +1,4 @@
+@using System.Reactive
 @using System.Reactive.Concurrency
 @using SeraBarber.BusinessObjects
 @using SeraBarber.Services
@@ -22,9 +23,11 @@
         {
             <MudStack>
                 <MudTextField T="string" Label="Όνομα Χρήστη" Value="@model.Username" ReadOnly="true"/>
-                <MudTextField T="string" Label="Email" Value="@model.Email" ReadOnly="true"/>
-                <MudTextField T="string" Label="Αριθμός τηλεφώνου" Value="@model.PhoneNumber" ReadOnly="true"/>
-
+                @if (_isAdmin || _isMyAppointment)
+                {
+                    <MudTextField T="string" Label="Email" Value="@model.Email" ReadOnly="true"/>
+                    <MudTextField T="string" Label="Αριθμός τηλεφώνου" Value="@model.PhoneNumber" ReadOnly="true"/>
+                }
                 <!-- Day picker -->
                 <MudDatePicker Date="@model.Day.ToDateTime(TimeOnly.MinValue)"
                                DateChanged="@(v => model.Day = DateOnly.FromDateTime(v ?? DateTime.Today))"
@@ -55,7 +58,7 @@
                                   ReadOnly="!_isMyAppointment"/>
                 }
             </MudStack>
-            @if (true)
+            @if (_isAdmin || _isMyAppointment)
             {
                 <MudStack>
                     <RadzenButton ButtonType="ButtonType.Submit" Text="Αποθήκευση" ButtonStyle="ButtonStyle.Success"/>
@@ -82,7 +85,7 @@
         if (Appointment != null)
         {
             HasPassed = SupabaseService.DateTimeHasPassed(Appointment.Start);
-
+            _isAdmin = SupabaseService.IsAdminUser() ?? false;
             model.Id = Appointment.Id;
             model.UserId = Appointment.UserId;
             model.Username = Appointment.Username;
@@ -103,16 +106,25 @@
     protected override async Task OnInitializedAsync()
     {
         await SupabaseService.InitializeAsync();
-        _isAdmin = SupabaseService.IsAdminUser() ?? false;
         await base.OnInitializedAsync();
     }
 
     async Task OnSubmit(Appointment model)
     {
-        await SupabaseService.UpdateAppointmentAsync(model);
-
-        DialogService.Close(model);
-        StateHasChanged();
+        var (appointment,errorMsg) = await SupabaseService.UpdateAppointmentAsync(model);
+        if (appointment == null)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Σφάλμα",
+                Detail = errorMsg ?? "Σφάλμα κατά τη επεξεργασία του ραντεβού",
+                Duration = 4000
+            });
+            DialogService.Close(false);
+        }
+        else
+            DialogService.Close(model);
     }
 
     private async Task OnDeleteClicked()
@@ -124,15 +136,9 @@
         bool? confirmed = await DialogService.Confirm("Θέλετε να διαγράψετε το ραντεβού;", "Επιβεβαίωση",confirmOptions);
         if (confirmed != true) return;
 
-        var (success,errorMsg) = await SupabaseService.DeleteAppointmentAsync(model.Id);
+        var (success,errorMsg) = await SupabaseService.DeleteAppointmentAsync(Appointment.Id);
 
-        if (success)
-        {
-            DialogService.Close(model);
-            StateHasChanged();
-        }
-        else
-        {
+        if(!success){
             NotificationService.Notify(new NotificationMessage
             {
                 Severity = NotificationSeverity.Error,
@@ -141,7 +147,6 @@
                 Duration = 4000
             });
         }
+        DialogService.Close(null);
     }
-
-
 }

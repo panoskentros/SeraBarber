@@ -34,7 +34,7 @@
             <MudTextField @bind-Value="model.Description" Label="Σημειώσεις" Clearable="true" Disabled="HasPassed"/>
         </MudStack>
         <MudStack>
-            <RadzenButton ButtonType="ButtonType.Submit" Text="Save" Disabled="HasPassed"/>
+            <RadzenButton ButtonType="ButtonType.Submit" Text="Αποθήκευση" Disabled="HasPassed"/>
         </MudStack>
     </RadzenStack>
 </RadzenTemplateForm>
@@ -89,7 +89,7 @@
         }
 
         var currentUser = SupabaseService.GetCurrentUser();
-        if (currentUser == null) throw new Exception("current user is null");
+        if (currentUser == null) throw new Exception("current user is null"); // throws when session expired
         
         
         model.Username = currentUser?.UserMetadata["name"]?.ToString() ?? "Unknown";

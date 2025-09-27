@@ -47,6 +47,7 @@ else
     <p>Redirecting to login...</p>
 }
 
+
 <style>
     .rz-event-content {
         line-height:0.75rem !important;
@@ -176,10 +177,12 @@ else
     {
         Appointment copy;
         var isMyAppointment = SupabaseService.IsMyAppointment(args.Data.UserId);
-        if (SupabaseService.IsAdminUser()==true || isMyAppointment )
+        var isAdmin = SupabaseService.IsAdminUser() == true;
+        if (isAdmin || isMyAppointment )
         {
              copy = new Appointment
             {
+                Id=args.Data.Id,
                 Day = args.Data.Day,
                 Time = args.Data.Time,
                 Description = args.Data.Description,
@@ -192,6 +195,7 @@ else
         {
             copy = new Appointment
             {
+                Id=args.Data.Id,
                 Day = args.Data.Day,
                 Time = args.Data.Time,
                 Username = args.Data.Username,
@@ -202,13 +206,19 @@ else
         var data = await DialogService.OpenAsync<EditAppointmentPage>("Επεξεργασία Ραντεβού",
             new Dictionary<string, object> { { "Appointment", copy } });
 
-        if (data != null)
+        if (data is Appointment)
         {
+            //for the ui to update before browser refresh
             args.Data.Day = data.Day;
             args.Data.Time = data.Time;
             args.Data.Description = data.Description;
-            await scheduler.Reload();
+     
         }
+        else if(data is not bool)
+        {
+            appointments.Remove(args.Data);
+        }  
+        await scheduler.Reload();
     }
 
     void OnAppointmentRender(SchedulerAppointmentRenderEventArgs<Appointment> args)
@@ -229,7 +239,7 @@ else
         {
             string message = noAdmin ? "Δεν έχετε τα απαιτούμενα δικαιώματα." :
                 datePassed ? "Η ημερομηνία έχει ήδη περάσει." :
-                "Η ώρα είναι εκτός ωραρίου εργασίας.";
+                "Ο Σέρα ξεκουράζεται αυτή την ώρα";
 
             NotificationService.Notify(new NotificationMessage
             {
