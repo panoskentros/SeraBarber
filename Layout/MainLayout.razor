@@ -1,12 +1,13 @@
 ﻿@inherits LayoutComponentBase
 @using SeraBarber.Services
 @using MudBlazor
+@using Supabase.Gotrue
 @inject SupabaseService SupabaseService
 
 <MudDrawer @bind-Open="_open" Variant="DrawerVariant.Temporary" Elevation="4" ClipMode="DrawerClipMode.Never" Class="mud-theme-background">
     <MudDrawerHeader Style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:1rem;">
         <!-- Circular avatar -->
-        <img src="@_avatarUrl" alt="avatar" style="width:100px; height:100px; border-radius:50%;" />
+        <img src="@_avatarUrl" alt="avatar" style="width:80px; height:80px; border-radius:50%;" draggable="false"/>
 
         <!-- Text below -->
         <MudText Typo="Typo.h6" Class="text-center mt-2">@_name</MudText>
@@ -82,12 +83,12 @@
 @code {
     private bool _open = false;
     string _name;  private string _avatarUrl;
+    Supabase.Gotrue.User? _user;
     private void ToggleDrawer()
     {
         _open = !_open;
-        var user = SupabaseService.Client.Auth.CurrentUser;
-        _name  = user?.UserMetadata["name"].ToString() ?? String.Empty;
-        _avatarUrl = user?.UserMetadata["avatar_url"]?.ToString() ?? "default_avatar.jpg";
+        _name  = _user?.UserMetadata["name"].ToString() ?? String.Empty;
+        
 
         // Fallback to default if avatar_url is null or empty
         if (string.IsNullOrWhiteSpace(_avatarUrl))
@@ -96,12 +97,11 @@
         }
     }
 
-    protected override void OnAfterRender(bool firstRender)
-    {   
-        base.OnAfterRender(firstRender);
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        await SupabaseService.InitializeAsync();
+        _user = SupabaseService.Client.Auth.CurrentUser;
+        _avatarUrl = _user?.UserMetadata["avatar_url"]?.ToString() ?? "default_avatar.jpg";
     }
-
-    
-  
-
 }

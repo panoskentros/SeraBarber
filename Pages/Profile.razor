@@ -1,218 +1,178 @@
 @page "/Profile"
-@using System.Globalization
+@using MudBlazor
 @using Radzen
 @using SeraBarber.BusinessObjects
 @using SeraBarber.Services
-@using Radzen.Blazor
-@inject SupabaseService SupabaseService
 @inject Radzen.DialogService DialogService
+@using Variant = MudBlazor.Variant
+@inject SupabaseService SupabaseService
 @inject Radzen.NotificationService NotificationService
-@if (IsLoading)
-{
-    <p>Loading appointments...</p>
-}
-else if (_appointments != null && _appointments.Any())
-{
-    @foreach (var app in _appointments)
-    {
-        <p>@app.Day - @app.Time</p>
+
+<style>
+  /* Container max width and center */
+  .profile-container {
+    max-width: 800px;
+    margin: 0 auto;
+  }
+
+  /* Field styling: full width on small screens, 50% width on >=600px and centered */
+  .profile-field {
+    display: block;            /* make wrapper a block so width/margin work */
+    margin: 0 auto 1rem;      /* center horizontally and add bottom gap */
+    width: 100%;
+    max-width: 420px;         /* prevents fields from growing too large on very wide screens */
+    box-sizing: border-box;
+  }
+
+  @@media (min-width: 600px) {
+    .profile-field {
+      width: 50%;
     }
-    <RadzenScheduler
-        @ref="_scheduler"
-        Data="@_appointments"
-        StartProperty="Start"
-        EndProperty="End"
-        TItem="Appointment"
-        SelectedIndex="1"
-        TodayText="Σήμερα"
-        ShowHeader="true"
-        Style="height: 600px;"
-        SlotSelect=@OnSlotSelect
-        AppointmentSelect=@OnAppointmentSelect
-        AppointmentRender=@OnAppointmentRender
-        AppointmentMove=@OnAppointmentMove
-        SlotRender=@OnSlotRender
-        Culture="CultureInfo.CurrentCulture"/>
+
+    .save-button {
+      width: 50%;
+    }
+  }
+
+  /* Save button styling - centered and same width as fields */
+  .save-button {
+    display: block;
+    margin: 1rem auto 0;
+    width: 100%;
+    max-width: 420px;
+  }
+</style>
+
+@if (_isLoading)
+{
+    <p>Loading profile...</p>
 }
 else
 {
-    <p>Δέν βρέθηκαν ραντεβού</p>
+    <MudPaper Class="pa-6 profile-container" Elevation="2">
+        <MudStack Spacing="3" Class="w-100">
+            <MudText Typo="Typo.h5" Align="Align.Center">Στοιχεία Χρήστη</MudText>
+
+            <MudGrid Justify="Justify.Center" Spacing="3">
+                <!-- each MudItem takes the full row, CSS makes the inner field half-width & centered -->
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_name" Label="Όνομα"
+                                  Variant="Variant.Outlined"
+                                  Class="profile-field" />
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_email" Label="Email"
+                                  Variant="Variant.Outlined"
+                                  Class="profile-field"
+                                  Disabled="true" />
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_phoneNumber" Label="Τηλέφωνο"
+                                  Variant="Variant.Outlined"
+                                  Class="profile-field" 
+                                  AdornmentText="+30"
+                                  Adornment="Adornment.Start"
+                                  />
+                </MudItem>
+            </MudGrid>
+            <MudExpansionPanels Class="profile-field">
+                <MudExpansionPanel Text="Τα Ραντεβού μου" Expanded="true">
+                    <MudList T="Appointment">
+                        @if (_appointments.Any())
+                        {
+                            @foreach (var appt in _appointments)
+                            {
+                                var ampm = appt.Time.Hours >= 12 ? "μ.μ." : "π.μ.";
+                                <MudListItem T="Appointment" >
+                                    <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+                                        <!-- Appointment text on the left -->
+                                        <span>@($"{appt.Day:dd/MM/yyyy} - {appt.Time.Hours:D2}:{appt.Time.Minutes:D2} {ampm}")</span>
+
+                                        <!-- Cancel button pinned to the far right -->
+                                        <MudButton Color="Color.Error"
+                                                   Variant="Variant.Text"
+                                                   Size="Size.Small"
+                                                   OnClick="@(() => CancelAppointment(appt))">
+                                            Ακύρωση
+                                        </MudButton>
+                                    </div>
+                                </MudListItem>
+                            }
+                        }
+                        else
+                        {
+                            <MudListItem>Δεν βρέθηκε ραντεβού</MudListItem>
+                        }
+                    </MudList>
+                </MudExpansionPanel>
+            </MudExpansionPanels>
+
+
+
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       OnClick="SaveProfile" Class="save-button">
+                Αποθήκευση
+            </MudButton>
+        </MudStack>
+    </MudPaper>
 }
 
 @code {
-    private RadzenScheduler<Appointment> _scheduler;
     private IList<Appointment> _appointments;
-    private bool IsLoading = true;
-    private int _workStart = 10; // 10:00
-    private int _workEnd = 22;   // 22:00
+    private bool _isLoading = true;
+
+    private string _name= string.Empty;
+    private string _email= string.Empty;
+    private string _phoneNumber = string.Empty;
+
     protected override async Task OnInitializedAsync()
     {
         await base.OnInitializedAsync();
         await SupabaseService.InitializeAsync();
 
         var user = SupabaseService.GetCurrentUser();
-
         _appointments = await SupabaseService.GetCurrentUserAppointmentsAsync();
 
-        IsLoading = false;
-    }void OnSlotRender(SchedulerSlotRenderEventArgs args)
-    {
-        if ((SupabaseService.DateTimeHasPassed(args.Start) || 
-            SlotTaken(args.Start,args.End))
-            && SupabaseService.IsWithinWorkHours(args.Start,_workStart,_workEnd))
+        if (user != null)
         {
-            args.Attributes["style"] = "background: rgba(255,0,0,.25);";
-            return;
+            if (user.UserMetadata.TryGetValue("name", out var nameValue))
+                _name = nameValue?.ToString() ?? string.Empty;
+            else
+                _name = string.Empty;
+
+            _email = user.Email ?? string.Empty;
+
+            if (user.UserMetadata.TryGetValue("phone_number", out var phoneValue))
+                _phoneNumber = phoneValue?.ToString() ?? string.Empty;
+            else
+                _phoneNumber = string.Empty;
         }
-        // Highlight working hours
-        if ((args.View.Text == "Ημέρα" || args.View.Text == "Εβδομάδα") && args.Start.Hour >= _workStart && args.Start.Hour < _workEnd)
-            args.Attributes["style"] = "background: rgba(0,255,0,.25); !important;";
+
+        _isLoading = false;
     }
 
-    async Task OnSlotSelect(SchedulerSlotSelectEventArgs args)
+    private async Task SaveProfile()
     {
-        if (args.View.Text != "Year")
-        {
-            
-            if (SupabaseService.DateTimeHasPassed(args.Start)){
-                NotificationService.Notify(new NotificationMessage
-                {
-                    Severity = NotificationSeverity.Error,
-                    Summary = "Παρελθοντική Ημερομηνία",
-                    Detail = "Αυτή η ημερομηνία είναι στο παρελθόν",
-                    Duration = 4000
-                });
-                return;
-            }
-            if (!SupabaseService.IsWithinWorkHours(args.Start,_workStart,_workEnd))
-            {
-                NotificationService.Notify(new NotificationMessage
-                {
-                    Severity = NotificationSeverity.Error,
-                    Summary = "Κλειστό",
-                    Detail = "Ο Σέρα ξεκουράζεται αυτή την ώρα",
-                    Duration = 4000
-                });
-                return;
-            }
-            if (SlotTaken(args.Start, args.End))
-            {
-                NotificationService.Notify(new NotificationMessage
-                {
-                    Severity = NotificationSeverity.Error,
-                    Summary = "Κατειλημμένο",
-                    Detail = "Αυτό το χρονικό διάστημα έχει ήδη ένα ραντεβού.",
-                    Duration = 4000,
-                });
-                return;
-            }
-            var data = await DialogService.OpenAsync<AddAppointmentPage>("Κλείσε ραντεβού",
-                new Dictionary<string, object> { { "Start", args.Start }, { "End", args.End } });
+        // await SupabaseService.UpdateUserMetadataAsync(new Dictionary<string, object>
+        // {
+        //     { "name", _name },
+        //     { "phone_number", _phoneNumber }
+        // });
 
-            if (data != null)
-            {
-                _appointments.Add(data);
-                await _scheduler.Reload();
-            }
-        }
+            NotificationService.Notify(NotificationSeverity.Success, "Επιτυχία", "Τα στοιχεία αποθηκεύτηκαν!");
     }
 
-    async Task OnAppointmentSelect(SchedulerAppointmentSelectEventArgs<Appointment> args)
+    private async Task CancelAppointment(Appointment appt)
     {
-        Appointment copy;
-        var isMyAppointment = SupabaseService.IsMyAppointment(args.Data.UserId);
-        var isAdmin = SupabaseService.IsAdminUser() == true;
-        if (isAdmin || isMyAppointment )
+        var confirmOptions = new ConfirmOptions()
         {
-             copy = new Appointment
-            {
-                Id=args.Data.Id,
-                Day = args.Data.Day,
-                Time = args.Data.Time,
-                Description = args.Data.Description,
-                Username = args.Data.Username,
-                Email = args.Data.Email,
-                PhoneNumber = args.Data.PhoneNumber,
-            };
-        }
-        else
-        {
-            copy = new Appointment
-            {
-                Id=args.Data.Id,
-                Day = args.Data.Day,
-                Time = args.Data.Time,
-                Username = args.Data.Username,
-            };
-        }
-        
-
-        var data = await DialogService.OpenAsync<EditAppointmentPage>("Επεξεργασία Ραντεβού",
-            new Dictionary<string, object> { { "Appointment", copy } });
-
-        if (data is Appointment)
-        {
-            //for the ui to update before browser refresh
-            args.Data.Day = data.Day;
-            args.Data.Time = data.Time;
-            args.Data.Description = data.Description;
-     
-        }
-        else if(data is not bool)
-        {
-            _appointments.Remove(args.Data);
-        }  
-        await _scheduler.Reload();
-    }
-
-    void OnAppointmentRender(SchedulerAppointmentRenderEventArgs<Appointment> args)
-    {
-        if (args.Data.Start < DateTime.Today)
-            args.Attributes["style"] = "background: red";
-    }
-
-    async Task OnAppointmentMove(SchedulerAppointmentMoveEventArgs args)
-    {
-        bool noAdmin =  SupabaseService.IsAdminUser() is null or false;
-        bool datePassed = SupabaseService.DateTimeHasPassed(args.SlotDate);
-        bool outsideWorkHours = !SupabaseService.IsWithinWorkHours(args.SlotDate, _workStart, _workEnd);
-        bool hasConflict = _appointments.Any(x => x.Start == args.SlotDate && x != args.Appointment.Data);
-
-// If any condition fails
-        if (noAdmin || datePassed || outsideWorkHours)
-        {
-            string message = noAdmin ? "Δεν έχετε τα απαιτούμενα δικαιώματα." :
-                datePassed ? "Η ημερομηνία έχει ήδη περάσει." :
-                "Ο Σέρα ξεκουράζεται αυτή την ώρα";
-
-            NotificationService.Notify(new NotificationMessage
-            {
-                Severity = NotificationSeverity.Error,
-                
-                Detail = message,
-                Duration = 4000
-            });
-
-            return;
-        }
-        var draggedAppointment = _appointments.FirstOrDefault(x => x == args.Appointment.Data);
-        if (draggedAppointment != null)
-        {
-            var duration = draggedAppointment.End - draggedAppointment.Start;
-            draggedAppointment.Day = DateOnly.FromDateTime(args.SlotDate);
-            draggedAppointment.Time = args.SlotDate.TimeOfDay;
-            
-            await SupabaseService.UpdateAppointmentAsync(draggedAppointment);
-            await _scheduler.Reload();
-        }
-
-        
-    }
-    
-
-    private bool SlotTaken(DateTime start, DateTime end)
-    {
-        return _appointments.Any(a => (start < a.End) && (end > a.Start));
+            CancelButtonText = "Ακύρωση",
+        };
+        bool? confirmed = await DialogService.Confirm("Θέλετε να διαγράψετε το ραντεβού;", "Επιβεβαίωση",confirmOptions);
+        if (confirmed != true) return; 
+        Console.WriteLine($"canceled {appt.Id}");
     }
 
 }
