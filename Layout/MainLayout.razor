@@ -101,7 +101,13 @@
     {
         await base.OnInitializedAsync();
         await SupabaseService.InitializeAsync();
+    }
+
+    protected override Task OnAfterRenderAsync(bool firstRender)
+    {
         _user = SupabaseService.Client.Auth.CurrentUser;
         _avatarUrl = _user?.UserMetadata["avatar_url"]?.ToString() ?? "default_avatar.jpg";
+        return base.OnAfterRenderAsync(firstRender);
     }
+
 }

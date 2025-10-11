@@ -42,6 +42,7 @@ namespace SeraBarber.Services
         }
 
         private ILocalStorageService LocalStorage { get; set; }
+        
 
         public User? GetCurrentUser() => client.Auth.CurrentUser;
         public bool? IsAdminUser()
